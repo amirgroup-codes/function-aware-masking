@@ -1,0 +1,78 @@
+# Hybrid curriculum with PER-BATCH strategy switching.
+#
+# In the original hybrid masker each *sample* in a batch is masked by an
+# independently sampled sub-strategy, so a single gradient step is a
+# smear of inductive biases. This variant samples one sub-strategy per
+# *batch* — every sample in a given step uses the same masker, so each
+# gradient update is a clean specialist signal that doesn't blend
+# multiple priors.
+#
+# Hypothesis: cleaner per-step inductive bias produces sharper
+# specialization, even though the long-run sub-strategy distribution is
+# identical to the per-sample variant.
+seed: 42
+
+data:
+  processed_path: "data/processed/oas_vh_500k.jsonl"
+  max_length: 160
+  min_length: 80
+  train_split: 0.9
+  valid_amino_acids: "ACDEFGHIKLMNPQRSTVWY"
+  coords_path: "data/structures/oas_vh_500k_igfold.pt"
+  paratope_path: "data/structures/oas_vh_500k_paratope.pt"
+  germline_path: "data/structures/oas_vh_500k_germline.pt"
+
+masking:
+  strategy: "hybrid"
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+  params:
+    sub_strategies: ["uniform", "cdr", "span", "structure", "interface", "germline"]
+    policy_weights: [0.30, 0.15, 0.30, 0.10, 0.10, 0.05]
+    sampling_mode: "per_batch"   # the change being tested
+    sub_strategy_params:
+      cdr:
+        cdr3_weight: 6.0
+      span:
+        geometric_p: 0.2
+        max_span_length: 10
+      structure:
+        k_neighbors: 5
+        min_seq_separation: 4
+      interface:
+        paratope_weight: 6.0
+      germline:
+        mutated_weight: 6.0
+    # Use the original 4-stage curriculum schedule so this run is a
+    # one-knob ablation: only sampling_mode differs from the baseline.
+    curriculum:
+      - step: 0
+        weights: [0.30, 0.15, 0.30, 0.10, 0.10, 0.05]
+      - step: 6250
+        weights: [0.10, 0.30, 0.10, 0.15, 0.25, 0.10]
+      - step: 18750
+        weights: [0.10, 0.20, 0.10, 0.15, 0.20, 0.25]
+      - step: 40000
+        weights: [0.10, 0.20, 0.10, 0.15, 0.20, 0.25]
+
+model:
+  model_name: "alchemab/antiberta2"
+  from_pretrained: false
+  model_size: "medium"
+
+training:
+  output_dir: "models/checkpoints/hybrid_perbatch_medium"
+  batch_size: 32
+  learning_rate: 5.0e-5
+  num_epochs: 20
+  max_steps: 125000
+  warmup_steps: 6250
+  weight_decay: 0.01
+  logging_steps: 100
+  save_steps: 2000
+  eval_steps: 5000
+  fp16: true
+  dataloader_num_workers: 4
+  gradient_accumulation_steps: 2
+  early_stopping_patience: 0

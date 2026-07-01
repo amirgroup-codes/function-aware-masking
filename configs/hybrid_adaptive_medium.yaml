@@ -1,0 +1,72 @@
+# Hybrid with SELF-PACED ADAPTIVE strategy sampling.
+#
+# Instead of a fixed curriculum schedule, the masker tracks an EMA of
+# per-strategy training loss and softmaxes that into a sampling
+# distribution: sub-strategies the model is currently struggling with
+# get more mask budget. Multiplicatively combined with a static base
+# policy so under-served strategies don't get starved when their
+# losses happen to be low.
+#
+# Standard self-paced learning move (cf. SuperLoss, CM-GEMS) ported to
+# the masking-strategy choice. This is the only variant in this batch
+# that is genuinely *non-deterministic* — different runs with the same
+# seed will produce different curricula because the loss feedback loop
+# depends on noisy per-batch losses.
+seed: 42
+
+data:
+  processed_path: "data/processed/oas_vh_500k.jsonl"
+  max_length: 160
+  min_length: 80
+  train_split: 0.9
+  valid_amino_acids: "ACDEFGHIKLMNPQRSTVWY"
+  coords_path: "data/structures/oas_vh_500k_igfold.pt"
+  paratope_path: "data/structures/oas_vh_500k_paratope.pt"
+  germline_path: "data/structures/oas_vh_500k_germline.pt"
+
+masking:
+  strategy: "hybrid"
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+  params:
+    sub_strategies: ["uniform", "cdr", "span", "structure", "interface", "germline"]
+    policy_weights: [0.20, 0.15, 0.20, 0.10, 0.20, 0.15]
+    adaptive: true
+    adaptive_decay: 0.99       # EMA half-life ~70 batches
+    adaptive_temperature: 0.5  # lower = sharper preference for the worst-performing strategy
+    sub_strategy_params:
+      cdr:
+        cdr3_weight: 6.0
+      span:
+        geometric_p: 0.2
+        max_span_length: 10
+      structure:
+        k_neighbors: 5
+        min_seq_separation: 4
+      interface:
+        paratope_weight: 6.0
+      germline:
+        mutated_weight: 6.0
+    # No fixed curriculum — the adaptive sampler shapes the schedule.
+
+model:
+  model_name: "alchemab/antiberta2"
+  from_pretrained: false
+  model_size: "medium"
+
+training:
+  output_dir: "models/checkpoints/hybrid_adaptive_medium"
+  batch_size: 32
+  learning_rate: 5.0e-5
+  num_epochs: 20
+  max_steps: 125000
+  warmup_steps: 6250
+  weight_decay: 0.01
+  logging_steps: 100
+  save_steps: 2000
+  eval_steps: 5000
+  fp16: true
+  dataloader_num_workers: 4
+  gradient_accumulation_steps: 2
+  early_stopping_patience: 0

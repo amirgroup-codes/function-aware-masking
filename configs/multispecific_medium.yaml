@@ -1,0 +1,47 @@
+seed: 42
+
+data:
+  processed_path: "data/processed/oas_paired_500k.jsonl"
+  max_length: 384
+  min_length: 80
+  train_split: 0.9
+  valid_amino_acids: "ACDEFGHIKLMNPQRSTVWY"
+  paratope_path: "data/structures/oas_paired_500k_paratope.pt"
+  interface_path: "data/structures/oas_paired_500k_interface.pt"
+  germline_path: "data/structures/oas_paired_500k_germline.pt"
+  paired: true
+  bispecific: false
+
+masking:
+  strategy: "multispecific"
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+  params:
+    paratope_weight: 6.0
+    non_paratope_weight: 1.0
+    shared_chain_boost: 3.0
+    interface_weight: 6.0
+    non_interface_weight: 1.0
+    policy_weights: [1.0, 1.0, 1.0]
+
+model:
+  model_name: "alchemab/antiberta2"
+  from_pretrained: false
+  model_size: "medium"
+
+training:
+  output_dir: "models/checkpoints/multispecific_medium"
+  batch_size: 16
+  learning_rate: 5.0e-5
+  num_epochs: 20
+  max_steps: 125000  # equal-step comparison across strategies
+  warmup_steps: 6250  # 5% of 125k max_steps
+  weight_decay: 0.01
+  logging_steps: 100
+  save_steps: 2000
+  eval_steps: 5000
+  fp16: true
+  dataloader_num_workers: 4
+  gradient_accumulation_steps: 4
+  early_stopping_patience: 0  # disabled for fair equal-step comparison

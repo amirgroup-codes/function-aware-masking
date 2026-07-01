@@ -1,0 +1,83 @@
+# Hybrid curriculum that includes the INTERSECTION masker as a sub-strategy.
+#
+# The intersection prior (paratope ∩ germline) concentrates loss on
+# residues that are simultaneously antigen-contacting AND somatically
+# hypermutated — the highest functional-density residues in an antibody.
+# Adding it to the hybrid curriculum gives the model a stage where the
+# learning signal is maximally focused on the residues that drive
+# binding affinity diversification.
+#
+# Schedule places intersection in stage 3 (the "hardest" stage in the
+# original ordering, where germline + interface were already running)
+# and weights it heavily in stage 4 alongside the existing priors.
+seed: 42
+
+data:
+  processed_path: "data/processed/oas_vh_500k.jsonl"
+  max_length: 160
+  min_length: 80
+  train_split: 0.9
+  valid_amino_acids: "ACDEFGHIKLMNPQRSTVWY"
+  coords_path: "data/structures/oas_vh_500k_igfold.pt"
+  paratope_path: "data/structures/oas_vh_500k_paratope.pt"
+  germline_path: "data/structures/oas_vh_500k_germline.pt"
+
+masking:
+  strategy: "hybrid"
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+  params:
+    sub_strategies:
+      ["uniform", "cdr", "span", "structure", "interface", "germline", "intersection"]
+    policy_weights: [0.20, 0.10, 0.20, 0.10, 0.15, 0.10, 0.15]
+    sub_strategy_params:
+      cdr:
+        cdr3_weight: 6.0
+      span:
+        geometric_p: 0.2
+        max_span_length: 10
+      structure:
+        k_neighbors: 5
+        min_seq_separation: 4
+      interface:
+        paratope_weight: 6.0
+      germline:
+        mutated_weight: 6.0
+      intersection:
+        priors: ["paratope", "germline"]
+        prior_weights:
+          paratope: [6.0, 1.0]
+          germline: [6.0, 1.0]
+    # Schedule: introduce intersection only after the model has learned
+    # the individual paratope and germline priors.
+    curriculum:
+      - step: 0
+        weights: [0.40, 0.10, 0.40, 0.00, 0.05, 0.05, 0.00]
+      - step: 18750
+        weights: [0.10, 0.25, 0.10, 0.10, 0.25, 0.20, 0.00]
+      - step: 50000
+        weights: [0.05, 0.10, 0.05, 0.10, 0.20, 0.20, 0.30]
+      - step: 90000
+        weights: [0.10, 0.10, 0.10, 0.15, 0.15, 0.15, 0.25]
+
+model:
+  model_name: "alchemab/antiberta2"
+  from_pretrained: false
+  model_size: "medium"
+
+training:
+  output_dir: "models/checkpoints/hybrid_intersection_medium"
+  batch_size: 32
+  learning_rate: 5.0e-5
+  num_epochs: 20
+  max_steps: 125000
+  warmup_steps: 6250
+  weight_decay: 0.01
+  logging_steps: 100
+  save_steps: 2000
+  eval_steps: 5000
+  fp16: true
+  dataloader_num_workers: 4
+  gradient_accumulation_steps: 2
+  early_stopping_patience: 0

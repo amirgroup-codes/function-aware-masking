@@ -1,0 +1,59 @@
+# Intersection masking: paratope ∩ germline.
+#
+# Paratope masking concentrates loss on antigen-contacting residues.
+# Germline masking concentrates loss on somatic-hypermutation sites.
+# Their elementwise product concentrates loss on residues that are BOTH
+# paratope and mutated — i.e., the SHM-driven binding determinants, the
+# highest-functional-density positions in an antibody. This is a strict
+# super-prior over either component alone: a position is masked heavily
+# only if both labels agree it's interesting.
+#
+# Why this matters: interface masking is the paper's overall winner.
+# Germline masking is the paper's "second-place dark horse" with
+# decoupled MLM-vs-downstream behavior. Their intersection should
+# in principle inherit both signals — better paratope representation
+# AND tighter focus on functionally diversifying residues.
+seed: 42
+
+data:
+  processed_path: "data/processed/oas_vh_500k.jsonl"
+  max_length: 160
+  min_length: 80
+  train_split: 0.9
+  valid_amino_acids: "ACDEFGHIKLMNPQRSTVWY"
+  paratope_path: "data/structures/oas_vh_500k_paratope.pt"
+  germline_path: "data/structures/oas_vh_500k_germline.pt"
+
+masking:
+  strategy: "intersection"
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+  params:
+    priors: ["paratope", "germline"]
+    # Per-prior (high, low) weights; product of these is the effective
+    # per-position weight. Defaults from PRIOR_SPECS are 6:1 each.
+    prior_weights:
+      paratope: [6.0, 1.0]
+      germline: [6.0, 1.0]
+
+model:
+  model_name: "alchemab/antiberta2"
+  from_pretrained: false
+  model_size: "medium"
+
+training:
+  output_dir: "models/checkpoints/intersection_medium"
+  batch_size: 32
+  learning_rate: 5.0e-5
+  num_epochs: 20
+  max_steps: 125000
+  warmup_steps: 6250
+  weight_decay: 0.01
+  logging_steps: 100
+  save_steps: 2000
+  eval_steps: 5000
+  fp16: true
+  dataloader_num_workers: 4
+  gradient_accumulation_steps: 2
+  early_stopping_patience: 0

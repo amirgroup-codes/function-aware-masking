@@ -1,0 +1,80 @@
+# Hybrid curriculum with WEIGHTS INFORMED BY PAPER RESULTS.
+#
+# The original hybrid weighted strategies roughly equally within each
+# stage, with no justification beyond intuition. The paper's per-strategy
+# rank table tells us interface, span, and germline are the strongest
+# single specialists; uniform and cdr are weaker on most downstream
+# probes. This variant reweights stages so the strategies that
+# empirically transfer best get more curriculum mass:
+#   - Stage 1 (general): keep uniform/span as the base scaffold
+#   - Stage 2 (binding): emphasize interface (won paratope/contact/structure)
+#                        over cdr (won only CDR3 infill, lost everywhere else)
+#   - Stage 3 (mutation): emphasize germline (2nd on multiple downstream)
+#                         and interface (the proven all-rounder)
+#   - Stage 4 (final):   weighted average reflecting per-strategy avg rank
+#
+# Conceptually: an "informed" hybrid where the curriculum encodes what
+# the seven-way comparison empirically learned about strategy quality.
+seed: 42
+
+data:
+  processed_path: "data/processed/oas_vh_500k.jsonl"
+  max_length: 160
+  min_length: 80
+  train_split: 0.9
+  valid_amino_acids: "ACDEFGHIKLMNPQRSTVWY"
+  coords_path: "data/structures/oas_vh_500k_igfold.pt"
+  paratope_path: "data/structures/oas_vh_500k_paratope.pt"
+  germline_path: "data/structures/oas_vh_500k_germline.pt"
+
+masking:
+  strategy: "hybrid"
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+  params:
+    sub_strategies: ["uniform", "cdr", "span", "structure", "interface", "germline"]
+    policy_weights: [0.10, 0.10, 0.20, 0.10, 0.30, 0.20]
+    sub_strategy_params:
+      cdr:
+        cdr3_weight: 6.0
+      span:
+        geometric_p: 0.2
+        max_span_length: 10
+      structure:
+        k_neighbors: 5
+        min_seq_separation: 4
+      interface:
+        paratope_weight: 6.0
+      germline:
+        mutated_weight: 6.0
+    curriculum:
+      - step: 0
+        weights: [0.40, 0.05, 0.45, 0.00, 0.10, 0.00]   # syntax-heavy
+      - step: 6250
+        weights: [0.10, 0.10, 0.10, 0.05, 0.50, 0.15]   # interface-dominant
+      - step: 18750
+        weights: [0.05, 0.10, 0.05, 0.10, 0.35, 0.35]   # interface + germline
+      - step: 40000
+        weights: [0.10, 0.10, 0.20, 0.10, 0.30, 0.20]   # consolidated mix
+
+model:
+  model_name: "alchemab/antiberta2"
+  from_pretrained: false
+  model_size: "medium"
+
+training:
+  output_dir: "models/checkpoints/hybrid_weighted_medium"
+  batch_size: 32
+  learning_rate: 5.0e-5
+  num_epochs: 20
+  max_steps: 125000
+  warmup_steps: 6250
+  weight_decay: 0.01
+  logging_steps: 100
+  save_steps: 2000
+  eval_steps: 5000
+  fp16: true
+  dataloader_num_workers: 4
+  gradient_accumulation_steps: 2
+  early_stopping_patience: 0

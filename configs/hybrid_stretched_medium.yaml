@@ -1,0 +1,77 @@
+# Hybrid curriculum with STRETCHED stages.
+#
+# Original schedule packed all curriculum-active stages into 0-25K of
+# 125K total steps, leaving 80% of training as the static balanced mix.
+# This variant gives each prior 4x more time before the consolidation
+# stage so specialization signals can actually shape the representation.
+#
+# Stage 1 (0-20K):     uniform + span        — general antibody syntax (4x longer)
+# Stage 2 (20K-50K):   cdr + interface       — binding specialization (3x longer)
+# Stage 3 (50K-90K):   germline + interface  — mutation realism (4x longer)
+# Stage 4 (90K-125K):  balanced all-six      — final consolidation (~3x shorter)
+#
+# Hypothesis: longer specialization → cleaner inductive-bias transfer
+# and hybrid ranks closer to interface_medium overall.
+seed: 42
+
+data:
+  processed_path: "data/processed/oas_vh_500k.jsonl"
+  max_length: 160
+  min_length: 80
+  train_split: 0.9
+  valid_amino_acids: "ACDEFGHIKLMNPQRSTVWY"
+  coords_path: "data/structures/oas_vh_500k_igfold.pt"
+  paratope_path: "data/structures/oas_vh_500k_paratope.pt"
+  germline_path: "data/structures/oas_vh_500k_germline.pt"
+
+masking:
+  strategy: "hybrid"
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+  params:
+    sub_strategies: ["uniform", "cdr", "span", "structure", "interface", "germline"]
+    policy_weights: [0.30, 0.15, 0.30, 0.10, 0.10, 0.05]
+    sub_strategy_params:
+      cdr:
+        cdr3_weight: 6.0
+      span:
+        geometric_p: 0.2
+        max_span_length: 10
+      structure:
+        k_neighbors: 5
+        min_seq_separation: 4   # use the long-range structural prior
+      interface:
+        paratope_weight: 6.0
+      germline:
+        mutated_weight: 6.0
+    curriculum:
+      - step: 0
+        weights: [0.50, 0.05, 0.40, 0.00, 0.05, 0.00]
+      - step: 20000
+        weights: [0.10, 0.30, 0.10, 0.10, 0.30, 0.10]
+      - step: 50000
+        weights: [0.05, 0.15, 0.05, 0.15, 0.30, 0.30]
+      - step: 90000
+        weights: [0.10, 0.20, 0.10, 0.15, 0.20, 0.25]
+
+model:
+  model_name: "alchemab/antiberta2"
+  from_pretrained: false
+  model_size: "medium"
+
+training:
+  output_dir: "models/checkpoints/hybrid_stretched_medium"
+  batch_size: 32
+  learning_rate: 5.0e-5
+  num_epochs: 20
+  max_steps: 125000
+  warmup_steps: 6250
+  weight_decay: 0.01
+  logging_steps: 100
+  save_steps: 2000
+  eval_steps: 5000
+  fp16: true
+  dataloader_num_workers: 4
+  gradient_accumulation_steps: 2
+  early_stopping_patience: 0

@@ -1,0 +1,47 @@
+# Tiny, self-contained demo configuration.
+#
+# Trains a small RoFormer/AntiBERTa2 model for a handful of steps on the
+# bundled ~500-sequence sample (data/sample/oas_vh_demo.jsonl) so you can see
+# the full masking -> training -> checkpoint loop end to end in ~1-2 minutes
+# on a CPU. This is a smoke test of the pipeline, not a useful model.
+#
+# Swap `masking.strategy` for any registered strategy that needs no precomputed
+# metadata sidecar: `uniform`, `cdr`, or `span`. The structure / interface /
+# germline / hybrid strategies additionally require the .pt sidecars described
+# in the README (Data section).
+#
+#   python scripts/train.py --config configs/demo.yaml
+
+seed: 42
+
+data:
+  processed_path: "data/sample/oas_vh_demo.jsonl"
+  max_length: 160
+  min_length: 80
+  train_split: 0.9
+
+masking:
+  strategy: "cdr"          # biologically-informed: biases masks toward CDR loops
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+
+model:
+  model_name: "alchemab/antiberta2"
+  from_pretrained: false
+  model_size: "small"      # 6L / 256h / ~4.8M params (pipeline-validation size)
+
+training:
+  output_dir: "models/checkpoints/demo"
+  batch_size: 16
+  learning_rate: 5.0e-4
+  max_steps: 50            # tiny budget, just enough to exercise the loop
+  warmup_steps: 5
+  weight_decay: 0.01
+  logging_steps: 5
+  save_steps: 50
+  eval_steps: 25
+  fp16: false              # CPU-friendly; set true on a GPU for speed
+  dataloader_num_workers: 0
+  gradient_accumulation_steps: 1
+  early_stopping_patience: 0

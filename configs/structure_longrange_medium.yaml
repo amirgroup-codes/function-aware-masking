@@ -1,0 +1,50 @@
+# Structure masking with the IgFold prior FILTERED to long-range neighbors only.
+#
+# Background: real Cα distances rank sequence-adjacent residues (i±1, i±2)
+# as the closest neighbors because the backbone is rigid. Top-5 nearest
+# under IgFold therefore includes ±1 sequence neighbors 100% of the time,
+# which makes structure masking effectively "protect span context" rather
+# than "protect long-range coupling partners" — the original conception.
+#
+# Setting min_seq_separation=4 drops i±1, i±2, i±3, i±4 from the kNN list,
+# leaving only genuinely long-range contacts. This is the variant most
+# aligned with the paper's stated structural-coupling motivation.
+seed: 42
+
+data:
+  processed_path: "data/processed/oas_vh_500k.jsonl"
+  max_length: 160
+  min_length: 80
+  train_split: 0.9
+  valid_amino_acids: "ACDEFGHIKLMNPQRSTVWY"
+  coords_path: "data/structures/oas_vh_500k_igfold.pt"
+
+masking:
+  strategy: "structure"
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+  params:
+    k_neighbors: 5
+    min_seq_separation: 4   # exclude residues within ±4 of self in sequence
+
+model:
+  model_name: "alchemab/antiberta2"
+  from_pretrained: false
+  model_size: "medium"
+
+training:
+  output_dir: "models/checkpoints/structure_longrange_medium"
+  batch_size: 32
+  learning_rate: 5.0e-5
+  num_epochs: 20
+  max_steps: 125000
+  warmup_steps: 6250
+  weight_decay: 0.01
+  logging_steps: 100
+  save_steps: 2000
+  eval_steps: 5000
+  fp16: true
+  dataloader_num_workers: 4
+  gradient_accumulation_steps: 2
+  early_stopping_patience: 0

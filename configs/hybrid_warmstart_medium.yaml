@@ -1,0 +1,76 @@
+# Hybrid curriculum WARM-STARTED from the interface_medium checkpoint.
+#
+# Interface masking won the most paper metrics overall (avg rank 3.08).
+# Starting hybrid from interface's converged weights — instead of from
+# scratch — inherits that strong representation as a foundation, then
+# layers the other priors on top to pick up gains the specialist alone
+# couldn't capture (e.g., CDR3 infill exact-match, span-level
+# reconstruction, germline diversification).
+#
+# Functionally equivalent to "continued pretraining of interface_medium
+# with a curriculum schedule," which is exactly what the paper's Future
+# Work section called for.
+seed: 42
+
+data:
+  processed_path: "data/processed/oas_vh_500k.jsonl"
+  max_length: 160
+  min_length: 80
+  train_split: 0.9
+  valid_amino_acids: "ACDEFGHIKLMNPQRSTVWY"
+  coords_path: "data/structures/oas_vh_500k_igfold.pt"
+  paratope_path: "data/structures/oas_vh_500k_paratope.pt"
+  germline_path: "data/structures/oas_vh_500k_germline.pt"
+
+masking:
+  strategy: "hybrid"
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+  params:
+    sub_strategies: ["uniform", "cdr", "span", "structure", "interface", "germline"]
+    policy_weights: [0.10, 0.20, 0.10, 0.15, 0.20, 0.25]
+    sub_strategy_params:
+      cdr:
+        cdr3_weight: 6.0
+      span:
+        geometric_p: 0.2
+        max_span_length: 10
+      structure:
+        k_neighbors: 5
+        min_seq_separation: 4
+      interface:
+        paratope_weight: 6.0
+      germline:
+        mutated_weight: 6.0
+    # No curriculum. Warm-starting from a converged specialist already
+    # encodes the "scaffold first" knowledge; we just need the other
+    # priors to layer additional inductive bias on top, with stable
+    # weights throughout the continued-pretraining phase.
+
+model:
+  # Load weights from the converged interface_medium run instead of
+  # initializing from scratch. The trainer's build_model() honors local
+  # checkpoint paths via from_pretrained=True.
+  model_name: "models/checkpoints/interface_medium/final"
+  from_pretrained: true
+  model_size: "medium"
+
+training:
+  output_dir: "models/checkpoints/hybrid_warmstart_medium"
+  batch_size: 32
+  learning_rate: 2.0e-5   # lower LR for continued-pretraining: warm-start
+                           # already has good weights, full 5e-5 would
+                           # destabilize them
+  num_epochs: 20
+  max_steps: 50000        # half the budget of from-scratch since we're
+                           # starting from a converged checkpoint
+  warmup_steps: 2500
+  weight_decay: 0.01
+  logging_steps: 100
+  save_steps: 2000
+  eval_steps: 5000
+  fp16: true
+  dataloader_num_workers: 4
+  gradient_accumulation_steps: 2
+  early_stopping_patience: 0
