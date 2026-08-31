@@ -13,10 +13,10 @@ import logging
 from pathlib import Path
 
 import torch
-from torch.utils.data import random_split
 from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
 from data.dataset import AntibodyDataset
+from data.splits import make_train_eval_split
 from masking import MLMDataCollator, get_strategy
 from models.model import build_model
 from training.config import ExperimentConfig
@@ -108,12 +108,10 @@ def train(config: ExperimentConfig) -> Path:
             germline_path=config.data.germline_path or None,
         )
 
-    train_size = int(len(full_dataset) * config.data.train_split)
-    eval_size = len(full_dataset) - train_size
-    train_dataset, eval_dataset = random_split(
+    train_dataset, eval_dataset = make_train_eval_split(
         full_dataset,
-        [train_size, eval_size],
-        generator=torch.Generator().manual_seed(config.seed),
+        config.data.train_split,
+        config.data.data_split_seed,
     )
     logger.info("Train: %d, Eval: %d", len(train_dataset), len(eval_dataset))
 

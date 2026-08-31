@@ -83,6 +83,9 @@ class HybridMasking(BaseMaskingStrategy):
         adaptive: bool = False,
         adaptive_decay: float = 0.99,
         adaptive_temperature: float = 1.0,
+        random_policy: bool = False,
+        random_policy_interval: int = 6250,
+        random_policy_seed: int = 0,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -117,6 +120,18 @@ class HybridMasking(BaseMaskingStrategy):
         # in the main process. Without share_memory_, the curriculum is a
         # silent no-op whenever dataloader_num_workers > 0.
         self._current_weights = self._base_weights.clone().share_memory_()
+
+        # Random mixture policy: a control for whether the hand-chosen mixing
+        # weights and transition points matter, or whether any mixture would do.
+        # Every `random_policy_interval` steps we
+        # redraw the mixture uniformly from the simplex (Dirichlet(1,...,1)),
+        # matching the piecewise-constant structure of the designed curricula
+        # while making the actual values arbitrary. If this matches the designed
+        # hybrids, the curriculum design contributes nothing.
+        self._random_policy = random_policy
+        self._random_policy_interval = max(1, int(random_policy_interval))
+        self._random_policy_gen = torch.Generator().manual_seed(random_policy_seed)
+        self._last_resample_block = -1
 
         # Parse curriculum schedule
         self._curriculum: list[tuple[int, torch.Tensor]] | None = None
@@ -210,6 +225,20 @@ class HybridMasking(BaseMaskingStrategy):
         new tensor that's NOT shared with the forked DataLoader workers.
         """
         self._current_step = step
+
+        if self._random_policy:
+            block = step // self._random_policy_interval
+            if block != self._last_resample_block:
+                self._last_resample_block = block
+                # Dirichlet(1,...,1) == uniform on the simplex, via normalised
+                # Exponential(1) draws. Written in-place so forked DataLoader
+                # workers observe the update (see _current_weights above).
+                draw = -torch.rand(
+                    len(self._strategy_names), generator=self._random_policy_gen,
+                ).clamp(min=1e-12).log()
+                self._current_weights.copy_(draw / draw.sum())
+            return
+
         if self._curriculum is None:
             return
 

@@ -1,0 +1,78 @@
+# Random mixture policy: CONTROL for the hand-designed hybrid curricula.
+#
+# Tests whether the manually chosen mixing weights and transition points
+# matter, or whether any mixture would do. This keeps every other setting
+# identical to hybrid_curriculum_medium (same sub-strategies, same 6250-step
+# block structure, same budget) and replaces only the *values*: at each block
+# the mixture is redrawn uniformly from the simplex.
+#
+# If this matches the designed hybrids, the curriculum design contributes
+# nothing beyond mixing specialists at all.
+#
+# random_policy_seed is set per replicate so the three seeds sample three
+# different arbitrary curricula, not the same one three times.
+
+seed: 42
+data:
+  processed_path: data/processed/oas_vh_500k.jsonl
+  max_length: 160
+  min_length: 80
+  train_split: 0.9
+  valid_amino_acids: ACDEFGHIKLMNPQRSTVWY
+  coords_path: data/structures/oas_vh_500k_igfold.pt
+  paratope_path: data/structures/oas_vh_500k_paratope.pt
+  germline_path: data/structures/oas_vh_500k_germline.pt
+masking:
+  strategy: hybrid
+  mask_prob: 0.15
+  mask_token_ratio: 0.8
+  random_token_ratio: 0.1
+  params:
+    sub_strategies:
+    - uniform
+    - cdr
+    - span
+    - structure
+    - interface
+    - germline
+    policy_weights:
+    - 0.3
+    - 0.15
+    - 0.3
+    - 0.1
+    - 0.1
+    - 0.05
+    sub_strategy_params:
+      cdr:
+        cdr3_weight: 6.0
+      span:
+        geometric_p: 0.2
+        max_span_length: 10
+      structure:
+        k_neighbors: 32
+      interface:
+        paratope_weight: 6.0
+      germline:
+        mutated_weight: 6.0
+    random_policy: true
+    random_policy_interval: 6250
+    random_policy_seed: 0
+model:
+  model_name: alchemab/antiberta2
+  from_pretrained: false
+  model_size: medium
+training:
+  output_dir: models/checkpoints/hybrid_random_medium
+  batch_size: 32
+  learning_rate: 5.0e-05
+  num_epochs: 20
+  max_steps: 125000
+  warmup_steps: 6250
+  weight_decay: 0.01
+  logging_steps: 100
+  save_steps: 2000
+  eval_steps: 5000
+  fp16: true
+  dataloader_num_workers: 4
+  gradient_accumulation_steps: 2
+  early_stopping_patience: 0

@@ -17,6 +17,11 @@ class DataConfig:
     max_length: int = 160
     min_length: int = 80
     train_split: float = 0.9
+    # Generator seed for the train/eval partition. Kept independent of the
+    # experiment `seed` so seed replicates vary model init and masking RNG
+    # only — the held-out set must not move, or a replicate would be
+    # evaluated on sequences it trained on. See data/splits.py.
+    data_split_seed: int = 42
     valid_amino_acids: str = "ACDEFGHIKLMNPQRSTVWY"
     coords_path: str = ""
     paratope_path: str = ""
