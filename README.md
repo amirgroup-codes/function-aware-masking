@@ -52,12 +52,12 @@ The tokenizer (`alchemab/antiberta2`, a 28-token per-amino-acid RoFormer
 tokenizer) is downloaded from the Hugging Face Hub on first use and requires
 [`rjieba`](https://pypi.org/project/rjieba/) (pulled in by `requirements.txt`).
 
-## Quickstart (CPU-only smoke test)
+## Quickstart
 
 A tiny, self-contained demo trains a small (~4.8M-param) model for 50 steps on a
 bundled 553-sequence sample of OAS VH data — exercising the full
 **masking → training → checkpoint → evaluation** loop with no large downloads.
-It runs on a CPU in a few minutes (seconds on a GPU) and is a smoke test of the
+It runs on a CPU in a few minutes (seconds on a GPU) and is a test of the
 pipeline, not a useful model:
 
 ```bash
@@ -137,7 +137,7 @@ their metadata is absent, so they never hard-fail.
 ## Training at scale
 
 The demo uses the `small` model; the paper experiments use `medium` (12 layers,
-512 hidden, ~50M params) trained for **125,000 steps** under matched compute. The
+512 hidden, ~50M params) trained for **125,000 steps**. The
 per-strategy configs are in [configs/](configs/) and exposed as flags on
 `train.py`:
 
@@ -147,14 +147,14 @@ python scripts/train.py --uniform --cdr --span --structure --interface --germlin
 ```
 
 Training at this scale requires the full corpus and (for the biologically
-informed strategies) the metadata sidecars described below.
+informed strategies) the metadata described below.
 
 ## Data
 
 The bundled `data/sample/oas_vh_demo.jsonl` (553 sequences) is all you need for
 the demo and tests. The **full corpus, metadata sidecars, and trained
 checkpoints are far too large to host on GitHub** and are not included; rebuild
-them with the shipped scripts:
+them with these scripts:
 
 ```bash
 # Pretraining corpus: ~497K OAS human VH sequences  → data/processed/oas_vh_500k.jsonl  (~124 MB)
@@ -190,23 +190,6 @@ python scripts/predict_structures_igfold.py \
 Computing the structure sidecar additionally requires [IgFold](https://github.com/Graylab/IgFold);
 CDR re-annotation requires [ANARCI](https://github.com/oxpig/ANARCI). Neither is
 needed for the demo, the tests, or `uniform` / `cdr` / `span` training.
-
-## Evaluation
-
-This release ships the two lightweight, dependency-free **zero-shot** metrics
-used to compare strategies on equal footing (`scripts/evaluate.py`):
-
-- **MLM accuracy & perplexity** under a *uniform reference mask* — every model is
-scored on the same masking distribution regardless of how it was trained —
-with a framework / CDR / CDR3 breakdown when CDR labels are present.
-- **Pseudo-log-likelihood (PLL)**, the standard zero-shot protein-LM fitness
-score.
-
-The full benchmark suite from the paper (CDR infilling, AB-Bind mutation-effect
-correlation, attention analysis, and supervised downstream probes for paratope
-prediction, contact maps, structure, and developability) is maintained in the
-research repository and omitted here to keep this codebase focused on the
-masking method.
 
 ## Citation
 
